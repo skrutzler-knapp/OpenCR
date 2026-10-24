@@ -50,8 +50,7 @@ int main( int argc, const char **argv )
   }
   
 
-  opencr_ld_main( argc, argv );
-  
-  return 0;
+  // Burgerista: report download failures through the exit status.
+  return opencr_ld_main( argc, argv ) == 0 ? 0 : 1;
 }
            

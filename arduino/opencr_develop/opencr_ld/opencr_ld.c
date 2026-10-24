@@ -79,9 +79,7 @@ int opencr_ld_main( int argc, const char **argv )
 
   printf("opencr_ld_main \r\n");
 
-  opencr_ld_down( argc, argv );
-
-  return 0;
+  return opencr_ld_down( argc, argv );
 }
 
 

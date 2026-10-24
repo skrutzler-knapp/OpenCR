@@ -36,7 +36,8 @@
   #define DEBUG_PRINTLN(x) 
 #endif
 
-const uint8_t FIRMWARE_VER = 5; //DYNAMIXEL2Arduino v0.6.1 or higher is required.
+// Burgerista D009: 101 = upstream ROS 2 firmware 5 + Burgerista safety patch rev 1.
+const uint8_t FIRMWARE_VER = 101; //DYNAMIXEL2Arduino v0.6.1 or higher is required.
 const uint32_t INTERVAL_MS_TO_CONTROL_MOTOR = 20;
 const uint32_t INTERVAL_MS_TO_UPDATE_CONTROL_ITEM = 20;
 

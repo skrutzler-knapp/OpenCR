@@ -1,0 +1,5 @@
+arduino/opencr_arduino/opencr/libraries/turtlebot3_ros2/src/turtlebot3/turtlebot3.cpp -whitespace
+arduino/opencr_arduino/opencr/libraries/turtlebot3_ros2/src/turtlebot3/turtlebot3_motor_driver.cpp -whitespace
+arduino/opencr_arduino/opencr/libraries/turtlebot3_ros2/include/turtlebot3/turtlebot3.h -whitespace
+arduino/opencr_develop/opencr_ld/main.c -whitespace
+arduino/opencr_develop/opencr_ld/opencr_ld.c -whitespace

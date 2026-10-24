@@ -105,6 +105,8 @@ const uint8_t ID_DXL_SLAVE = 200;
 const uint16_t MODEL_NUM_DXL_SLAVE = 0x5000;
 const float PROTOCOL_VERSION_DXL_SLAVE = 2.0;
 const uint32_t HEARTBEAT_TIMEOUT_MS = 500;
+const uint32_t CMD_VEL_TIMEOUT_MS = 500;
+static uint32_t cmd_vel_time_ms;
 
 static void dxl_slave_write_callback_func(uint16_t addr, uint8_t &dxl_err_code, void* arg);
 
@@ -529,7 +531,6 @@ void TurtleBot3Core::begin(const char* model_name)
 
   // Check connection state with motors.
   if(motor_driver.is_connected() == true){
-    motor_driver.set_torque(true);
     control_items.device_status = STATUS_RUNNING;
     set_connection_state_with_motors(true);
     DEBUG_PRINTLN("Wheel motors are connected");
@@ -615,7 +616,7 @@ void TurtleBot3Core::run()
   if (millis()-pre_time_to_control_motor >= INTERVAL_MS_TO_CONTROL_MOTOR)
   {
     pre_time_to_control_motor = millis();
-    if(get_connection_state_with_ros2_node() == false){
+    if(get_connection_state_with_ros2_node() == false || millis()-cmd_vel_time_ms > CMD_VEL_TIMEOUT_MS){
       memset(goal_velocity_from_cmd, 0, sizeof(goal_velocity_from_cmd));
     }
     update_goal_velocity_from_3values();
@@ -632,8 +633,9 @@ void TurtleBot3Core::run()
 *******************************************************************************/
 void update_goal_velocity_from_3values(void)
 {
-  goal_velocity[VelocityType::LINEAR]  = goal_velocity_from_button[VelocityType::LINEAR]  + goal_velocity_from_cmd[VelocityType::LINEAR]  + goal_velocity_from_rc100[VelocityType::LINEAR];
-  goal_velocity[VelocityType::ANGULAR] = goal_velocity_from_button[VelocityType::ANGULAR] + goal_velocity_from_cmd[VelocityType::ANGULAR] + goal_velocity_from_rc100[VelocityType::ANGULAR];
+  // Burgerista D009: host cmd_vel is the only motion source (no button or RC100 drive).
+  goal_velocity[VelocityType::LINEAR]  = goal_velocity_from_cmd[VelocityType::LINEAR];
+  goal_velocity[VelocityType::ANGULAR] = goal_velocity_from_cmd[VelocityType::ANGULAR];
 
   sensors.setLedPattern(goal_velocity[VelocityType::LINEAR], goal_velocity[VelocityType::ANGULAR]);
 }
@@ -813,10 +815,12 @@ static void dxl_slave_write_callback_func(uint16_t item_addr, uint8_t &dxl_err_c
       break;
 
     case ADDR_CMD_VEL_LINEAR_X:
+      cmd_vel_time_ms = millis();
       goal_velocity_from_cmd[VelocityType::LINEAR] = constrain((float)(control_items.cmd_vel_linear[0]*0.01f), min_linear_velocity, max_linear_velocity);
       break;
 
     case ADDR_CMD_VEL_ANGULAR_Z:
+      cmd_vel_time_ms = millis();
       goal_velocity_from_cmd[VelocityType::ANGULAR] = constrain((float)(control_items.cmd_vel_angular[2]*0.01f), min_angular_velocity, max_angular_velocity);
       break;            
 
@@ -940,6 +944,19 @@ static void set_connection_state_with_ros2_node(bool is_connected)
   connection_state_with_ros2_node = is_connected;
 }
 
+// Burgerista D009: host loss clears commands and disables torque. Motion needs
+// a new explicit torque write; a resumed heartbeat alone does not restore it.
+static void stop_motors_for_host_loss()
+{
+  memset(goal_velocity_from_cmd, 0, sizeof(goal_velocity_from_cmd));
+  memset(control_items.cmd_vel_linear, 0, sizeof(control_items.cmd_vel_linear));
+  memset(control_items.cmd_vel_angular, 0, sizeof(control_items.cmd_vel_angular));
+  if(get_connection_state_with_motors() == true){
+    motor_driver.set_torque(false);
+  }
+  control_items.motor_torque_enable_state = false;
+}
+
 void update_connection_state_with_ros2_node()
 {
   static uint32_t pre_time;
@@ -953,13 +970,16 @@ void update_connection_state_with_ros2_node()
     return;
   }
 
-  if(pre_data != control_items.heart_beat || control_items.debug_mode == true){
+  if(pre_data != control_items.heart_beat){
     pre_time = millis();
     pre_data = control_items.heart_beat;
     set_connection_state_with_ros2_node(true);
   }else{
     if(millis()-pre_time >= HEARTBEAT_TIMEOUT_MS){
       pre_time = millis();
+      if(get_connection_state_with_ros2_node() == true || control_items.motor_torque_enable_state == true){
+        stop_motors_for_host_loss();
+      }
       set_connection_state_with_ros2_node(false);
     }
   }

@@ -71,8 +71,8 @@ bool Turtlebot3MotorDriver::init(void)
   sync_read_param.xel[LEFT].id = left_wheel_id_;
   sync_read_param.xel[RIGHT].id = right_wheel_id_;
 
-  // Enable Dynamixel Torque
-  set_torque(true);
+  // Burgerista D009: boot with torque off; only the host may enable it.
+  set_torque(false);
 
   return true;
 }

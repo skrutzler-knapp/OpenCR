@@ -830,7 +830,7 @@ static void dxl_slave_write_callback_func(uint16_t item_addr, uint8_t &dxl_err_c
 
     case TurtleBot3Core::CommandFrame::ADDRESS:
     {
-      const auto result = TurtleBot3Core::CommandFrame::apply(
+      TurtleBot3Core::CommandFrame::apply(
         control_items.cmd_vel_frame,
         control_items.cmd_vel_linear[0],
         control_items.cmd_vel_angular[2],
@@ -845,10 +845,6 @@ static void dxl_slave_write_callback_func(uint16_t item_addr, uint8_t &dxl_err_c
         min_angular_velocity,
         max_angular_velocity,
         millis());
-      if (result == TurtleBot3Core::CommandFrame::INVALID)
-      {
-        dxl_err_code = DXL_ERR_DATA_RANGE;
-      }
       break;
     }
 

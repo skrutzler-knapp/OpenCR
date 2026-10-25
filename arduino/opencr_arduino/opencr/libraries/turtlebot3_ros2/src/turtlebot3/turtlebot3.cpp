@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "../../include/turtlebot3/turtlebot3.h"
+#include "../../include/turtlebot3/command_frame.h"
 
 /*******************************************************************************
 * Definition of dependency data according to TB3 model.
@@ -104,8 +105,6 @@ static Turtlebot3Controller controllers;
 const uint8_t ID_DXL_SLAVE = 200;
 const uint16_t MODEL_NUM_DXL_SLAVE = 0x5000;
 const float PROTOCOL_VERSION_DXL_SLAVE = 2.0;
-const uint32_t HEARTBEAT_TIMEOUT_MS = 500;
-const uint32_t CMD_VEL_TIMEOUT_MS = 500;
 static uint32_t cmd_vel_time_ms;
 
 static void dxl_slave_write_callback_func(uint16_t addr, uint8_t &dxl_err_code, void* arg);
@@ -121,7 +120,6 @@ static void update_motor_status(uint32_t interval_ms);
 static void update_battery_status(uint32_t interval_ms);
 static void update_analog_sensors(uint32_t interval_ms);
 static void update_joint_status(uint32_t interval_ms);
-
 
 DYNAMIXEL::USBSerialPortHandler port_dxl_slave(SERIAL_DXL_SLAVE);
 DYNAMIXEL::Slave dxl_slave(port_dxl_slave, MODEL_NUM_DXL_SLAVE);
@@ -189,7 +187,6 @@ enum ControlTableItemAddr{
   ADDR_CMD_VEL_ANGULAR_Z  = 170,
   ADDR_PROFILE_ACC_L      = 174,
   ADDR_PROFILE_ACC_R      = 178,
-
   ADDR_TORQUE_JOINT             = 199,
 
   ADDR_GOAL_POSITION_JOINT_1    = 200,
@@ -287,6 +284,7 @@ typedef struct ControlItemVariables{
   bool motor_torque_enable_state;
   int32_t cmd_vel_linear[3];
   int32_t cmd_vel_angular[3];
+  uint8_t cmd_vel_frame[TurtleBot3Core::CommandFrame::LENGTH];
   uint32_t profile_acceleration[MortorLocation::MOTOR_NUM_MAX];
 
   bool joint_torque_enable_state;
@@ -381,7 +379,7 @@ void TurtleBot3Core::begin(const char* model_name)
   dxl_slave.begin();
   // Init DXL Slave function
   dxl_slave.setPortProtocolVersion(PROTOCOL_VERSION_DXL_SLAVE);
-  dxl_slave.setFirmwareVersion(FIRMWARE_VER);
+  dxl_slave.setFirmwareVersion(LEGACY_FIRMWARE_VER);
   dxl_slave.setID(ID_DXL_SLAVE);
 
   /* Add control items for Slave */
@@ -453,6 +451,11 @@ void TurtleBot3Core::begin(const char* model_name)
   dxl_slave.addControlItem(ADDR_CMD_VEL_ANGULAR_Z, control_items.cmd_vel_angular[2]);  
   dxl_slave.addControlItem(ADDR_PROFILE_ACC_L, control_items.profile_acceleration[MortorLocation::LEFT]);
   dxl_slave.addControlItem(ADDR_PROFILE_ACC_R, control_items.profile_acceleration[MortorLocation::RIGHT]);
+  const bool cmd_vel_frame_registered =
+      dxl_slave.addControlItem(
+        TurtleBot3Core::CommandFrame::ADDRESS, control_items.cmd_vel_frame,
+        TurtleBot3Core::CommandFrame::LENGTH) == DXL_LIB_OK;
+  dxl_slave.setFirmwareVersion(cmd_vel_frame_registered ? FIRMWARE_VER : LEGACY_FIRMWARE_VER);
 
   if (p_tb3_model_info->has_manipulator == true) {
     control_items.joint_goal_position_wr_joint = false;
@@ -616,7 +619,8 @@ void TurtleBot3Core::run()
   if (millis()-pre_time_to_control_motor >= INTERVAL_MS_TO_CONTROL_MOTOR)
   {
     pre_time_to_control_motor = millis();
-    if(get_connection_state_with_ros2_node() == false || millis()-cmd_vel_time_ms > CMD_VEL_TIMEOUT_MS){
+    if(get_connection_state_with_ros2_node() == false ||
+      TurtleBot3Core::CommandFrame::commandTimedOut(millis(), cmd_vel_time_ms)){
       memset(goal_velocity_from_cmd, 0, sizeof(goal_velocity_from_cmd));
     }
     update_goal_velocity_from_3values();
@@ -824,6 +828,30 @@ static void dxl_slave_write_callback_func(uint16_t item_addr, uint8_t &dxl_err_c
       goal_velocity_from_cmd[VelocityType::ANGULAR] = constrain((float)(control_items.cmd_vel_angular[2]*0.01f), min_angular_velocity, max_angular_velocity);
       break;            
 
+    case TurtleBot3Core::CommandFrame::ADDRESS:
+    {
+      const auto result = TurtleBot3Core::CommandFrame::apply(
+        control_items.cmd_vel_frame,
+        control_items.cmd_vel_linear[0],
+        control_items.cmd_vel_angular[2],
+        goal_velocity_from_cmd[VelocityType::LINEAR],
+        goal_velocity_from_cmd[VelocityType::ANGULAR],
+        control_items.motor_torque_enable_state,
+        control_items.heart_beat,
+        cmd_vel_time_ms,
+        dxl_err_code,
+        min_linear_velocity,
+        max_linear_velocity,
+        min_angular_velocity,
+        max_angular_velocity,
+        millis());
+      if (result == TurtleBot3Core::CommandFrame::INVALID)
+      {
+        dxl_err_code = DXL_ERR_DATA_RANGE;
+      }
+      break;
+    }
+
     case ADDR_PROFILE_ACC_L:
     case ADDR_PROFILE_ACC_R:
       if(get_connection_state_with_motors() == true)
@@ -975,7 +1003,7 @@ void update_connection_state_with_ros2_node()
     pre_data = control_items.heart_beat;
     set_connection_state_with_ros2_node(true);
   }else{
-    if(millis()-pre_time >= HEARTBEAT_TIMEOUT_MS){
+    if(TurtleBot3Core::CommandFrame::heartbeatTimedOut(millis(), pre_time)){
       pre_time = millis();
       if(get_connection_state_with_ros2_node() == true || control_items.motor_torque_enable_state == true){
         stop_motors_for_host_loss();

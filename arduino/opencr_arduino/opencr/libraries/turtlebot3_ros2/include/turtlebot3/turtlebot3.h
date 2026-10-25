@@ -18,6 +18,7 @@
 #define TURTLEBOT3_H_
 
 #include <stdint.h>
+#include "command_frame.h"
 #include "turtlebot3_motor_driver.h"
 #include "turtlebot3_sensor.h"
 #include "turtlebot3_controller.h"
@@ -36,9 +37,11 @@
   #define DEBUG_PRINTLN(x) 
 #endif
 
-// Burgerista D009: 101 = upstream ROS 2 firmware 5 + Burgerista safety patch rev 1.
-const uint8_t FIRMWARE_VER = 101; //DYNAMIXEL2Arduino v0.6.1 or higher is required.
-const uint32_t INTERVAL_MS_TO_CONTROL_MOTOR = 20;
+// Burgerista D009: 102 adds the atomic frame control item to protocol 2 firmware.
+const uint8_t FIRMWARE_VER = 102; //DYNAMIXEL2Arduino v0.6.1 or higher is required.
+const uint8_t LEGACY_FIRMWARE_VER = 101;
+const uint32_t INTERVAL_MS_TO_CONTROL_MOTOR =
+  TurtleBot3Core::CommandFrame::MOTOR_CONTROL_INTERVAL_MS;
 const uint32_t INTERVAL_MS_TO_UPDATE_CONTROL_ITEM = 20;
 
 namespace TurtleBot3Core{
@@ -49,4 +52,3 @@ namespace TurtleBot3Core{
 
 
 #endif // TURTLEBOT3_H_
-
